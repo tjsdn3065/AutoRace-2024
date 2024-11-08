@@ -9,6 +9,26 @@ from std_msgs.msg import Header
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped,Point
 
+class IncrementalPID:
+    def __init__(self, kp, ki, kd, set_point=0):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.set_point = set_point
+        self.prev_error = 0
+        self.integral = 0
+        self.prev_output = 0
+
+    def update(self, current_value):
+        error = self.set_point - current_value
+        self.integral += error
+        derivative = error - self.prev_error
+        output_increment = (self.kp * error + self.ki * self.integral + self.kd * derivative)
+        new_output = self.prev_output + output_increment
+        self.prev_output = new_output
+        self.prev_error = error
+        return new_output*pi/180
+
 class Rubber_cone:
     def __init__(self):
         rospy.init_node('rubber_cone')
@@ -26,18 +46,17 @@ class Rubber_cone:
 
         self.ctrl_cmd_msg = CtrlCmd()
         self.ctrl_cmd_msg.longlCmdType = 2
-        self.ctrl_cmd_msg.velocity = 5.0
+        self.ctrl_cmd_msg.velocity = 10.0
         self.ctrl_cmd_msg.accel = 0.1
         self.ctrl_cmd_msg.steering = 0.0
-        self.max_angle = 35*pi/180
 
         self.vehicle_length = 1.63
         self.lfd = 3
         self.forward_point = Point()
         self.is_look_forward_point = False
 
-        self.waypoint_x = -1
-        self.waypoint_y = -1
+        self.pid = IncrementalPID(kp=0.1, ki=0.0, kd=0.0)
+        self.target_angle = 0  # 목표 각도 초기화
 
         rate = rospy.Rate(10)
 
@@ -56,7 +75,7 @@ class Rubber_cone:
             self.point_list.append(point)
 
     def add_line_points(self, points, current_point, line, side):
-        dis=2.0 # 범위 거리
+        dis=3.0 # 범위 거리
         next_points = points[(points[:, 0] > current_point[0]) & (np.linalg.norm(points - current_point, axis=1) <= dis)]
         while next_points.size > 0:
             next_point = next_points[np.argmin(np.linalg.norm(next_points, axis=1))]
@@ -138,7 +157,7 @@ class Rubber_cone:
                         if prev_x != 0 and prev_y != 0:
                             between_center_x=(center_x+prev_x)/2
                             between_center_y=(center_y+prev_y)/2
-                            center_line.append((between_center_x, between_center_y))
+                            #center_line.append((between_center_x, between_center_y))
                         # 계산된 중앙점을 center_line에 추가
                         center_line.append((center_x, center_y))
                         prev_x=center_x
@@ -155,7 +174,7 @@ class Rubber_cone:
                         if prev_x != 0 and prev_y != 0:
                             between_center_x=(center_x+prev_x)/2
                             between_center_y=(center_y+prev_y)/2
-                            center_line.append((between_center_x, between_center_y))
+                            #center_line.append((between_center_x, between_center_y))
                         # 계산된 중앙점을 center_line에 추가
                         center_line.append((center_x, center_y))
                         prev_x=center_x
@@ -172,7 +191,7 @@ class Rubber_cone:
                         if prev_x != 0 and prev_y != 0:
                             between_center_x=(center_x+prev_x)/2
                             between_center_y=(center_y+prev_y)/2
-                            center_line.append((between_center_x, between_center_y))
+                            #center_line.append((between_center_x, between_center_y))
                         # 계산된 중앙점을 center_line에 추가
                         center_line.append((center_x, center_y))
                         prev_x=center_x
@@ -189,7 +208,7 @@ class Rubber_cone:
                         if prev_x != 0 and prev_y != 0:
                             between_center_x=(center_x+prev_x)/2
                             between_center_y=(center_y+prev_y)/2
-                            center_line.append((between_center_x, between_center_y))
+                            #center_line.append((between_center_x, between_center_y))
                         # 계산된 중앙점을 center_line에 추가
                         center_line.append((center_x, center_y))
                         prev_x=center_x
@@ -203,7 +222,7 @@ class Rubber_cone:
                         if prev_x != 0 and prev_y != 0:
                             between_center_x=(center_x+prev_x)/2
                             between_center_y=(center_y+prev_y)/2
-                            center_line.append((between_center_x, between_center_y))
+                            #center_line.append((between_center_x, between_center_y))
                         center_line.append((center_x, center_y))
                         prev_x=center_x
                         prev_y=center_y
@@ -219,7 +238,7 @@ class Rubber_cone:
                     if prev_x != 0 and prev_y != 0:
                         between_center_x=(center_x+prev_x)/2
                         between_center_y=(center_y+prev_y)/2
-                        center_line.append((between_center_x, between_center_y))
+                        #center_line.append((between_center_x, between_center_y))
                     # 계산된 중앙점을 center_line에 추가
                     center_line.append((center_x, center_y))
                     prev_x=center_x
@@ -236,41 +255,52 @@ class Rubber_cone:
                     if prev_x != 0 and prev_y != 0:
                         between_center_x=(center_x+prev_x)/2
                         between_center_y=(center_y+prev_y)/2
-                        center_line.append((between_center_x, between_center_y))
+                        #center_line.append((between_center_x, between_center_y))
                     # 계산된 중앙점을 center_line에 추가
                     center_line.append((center_x, center_y))
                     prev_x=center_x
                     prev_y=center_y
 
-            # 경로 데이터 초기화
-            center_path = Path()
-            center_path.header = Header(stamp=rospy.Time.now(), frame_id='velodyne')
-            if center_line != []:
-                for point in center_line:
-                    pose = PoseStamped()
-                    pose.header = Header(stamp=rospy.Time.now(), frame_id='velodyne')
-                    pose.pose.position.x = point[0]
-                    pose.pose.position.y = point[1]
-                    pose.pose.position.z = 0
-                    center_path.poses.append(pose)
+            if center_line == []:
+                self.ctrl_cmd_msg.steering=0
+            else:
+                # 경로 데이터 초기화
+                center_path = Path()
+                center_path.header = Header(stamp=rospy.Time.now(), frame_id='velodyne')
+                # center_line 리스트를 x 좌표에 따라 정렬
+                sorted_center_line = sorted(center_line, key=lambda point: point[0])
 
-            self.center_path_pub.publish(center_path)
+                if sorted_center_line:
+                    for point in sorted_center_line:
+                        pose = PoseStamped()
+                        pose.header = Header(stamp=rospy.Time.now(), frame_id='velodyne')
+                        pose.pose.position.x = point[0]
+                        pose.pose.position.y = point[1]
+                        pose.pose.position.z = 0
+                        center_path.poses.append(pose)
 
-            theta = 0
+                self.center_path_pub.publish(center_path)
 
-            for i, pose in enumerate(center_path.poses):
-                path_point = pose.pose.position
-                dis = sqrt(path_point.x**2 + path_point.y**2)
-                if dis >= self.lfd:
-                    self.forward_point = path_point
-                    self.is_look_forward_point = True
-                    theta = atan2(path_point.y, path_point.x)  # Correct order of arguments
-                    break
+                theta = 0
 
-            if self.is_look_forward_point:
-                self.ctrl_cmd_msg.steering = atan2(2 * self.vehicle_length * sin(theta), self.lfd)
-                #print(self.ctrl_cmd_msg.steering * 180 / pi)  # Conversion to degrees for readability
-                self.is_look_forward_point = False
+                for i, pose in enumerate(center_path.poses):
+                    path_point = pose.pose.position
+                    dis = sqrt(path_point.x**2 + path_point.y**2)
+                    if dis >= self.lfd:
+                        self.forward_point = path_point
+                        self.is_look_forward_point = True
+                        theta = atan2(path_point.y, path_point.x)  # Correct order of arguments
+                        break
+
+                if self.is_look_forward_point:
+                    steering = atan2(2 * self.vehicle_length * sin(theta), self.lfd)
+                    #self.ctrl_cmd_msg.steering = self.pid.update(steering*180/pi)
+                    self.ctrl_cmd_msg.steering=steering
+                    print(self.ctrl_cmd_msg.steering)
+                    #print(self.ctrl_cmd_msg.steering * 180 / pi)  # Conversion to degrees for readability
+                    self.is_look_forward_point = False
+                else:
+                    self.ctrl_cmd_msg.steering=0
                 
             self.ctrl_cmd_pub.publish(self.ctrl_cmd_msg)
 
