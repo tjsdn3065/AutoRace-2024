@@ -28,7 +28,7 @@ class Rubber_cone:
 
         self.ctrl_cmd_msg = CtrlCmd()
         self.ctrl_cmd_msg.longlCmdType = 2
-        self.ctrl_cmd_msg.velocity = 5.0
+        self.ctrl_cmd_msg.velocity = 7.0
         self.ctrl_cmd_msg.accel = 0.1
         self.ctrl_cmd_msg.steering = 0.0
 
