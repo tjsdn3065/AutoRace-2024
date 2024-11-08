@@ -9,25 +9,20 @@ from std_msgs.msg import Header
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped,Point
 
-class IncrementalPID:
-    def __init__(self, kp, ki, kd, set_point=0):
-        self.kp = kp
-        self.ki = ki
-        self.kd = kd
-        self.set_point = set_point
+class PIDController:
+    def __init__(self, kp, ki, kd):
+        self.Kp = kp
+        self.Ki = ki
+        self.Kd = kd
         self.prev_error = 0
         self.integral = 0
-        self.prev_output = 0
 
-    def update(self, current_value):
-        error = self.set_point - current_value
+    def compute(self, error):
         self.integral += error
         derivative = error - self.prev_error
-        output_increment = (self.kp * error + self.ki * self.integral + self.kd * derivative)
-        new_output = self.prev_output + output_increment
-        self.prev_output = new_output
+        output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
         self.prev_error = error
-        return new_output*pi/180
+        return output
 
 class Rubber_cone:
     def __init__(self):
@@ -46,17 +41,16 @@ class Rubber_cone:
 
         self.ctrl_cmd_msg = CtrlCmd()
         self.ctrl_cmd_msg.longlCmdType = 2
-        self.ctrl_cmd_msg.velocity = 10.0
+        self.ctrl_cmd_msg.velocity = 7.0
         self.ctrl_cmd_msg.accel = 0.1
         self.ctrl_cmd_msg.steering = 0.0
 
         self.vehicle_length = 1.63
-        self.lfd = 3
+        self.lfd = 3.0
         self.forward_point = Point()
         self.is_look_forward_point = False
 
-        self.pid = IncrementalPID(kp=0.1, ki=0.0, kd=0.0)
-        self.target_angle = 0  # 목표 각도 초기화
+        self.pid = PIDController(0.09, 0.03, 0.3)
 
         rate = rospy.Rate(10)
 
@@ -75,7 +69,7 @@ class Rubber_cone:
             self.point_list.append(point)
 
     def add_line_points(self, points, current_point, line, side):
-        dis=3.0 # 범위 거리
+        dis=2.5 # 범위 거리
         next_points = points[(points[:, 0] > current_point[0]) & (np.linalg.norm(points - current_point, axis=1) <= dis)]
         while next_points.size > 0:
             next_point = next_points[np.argmin(np.linalg.norm(next_points, axis=1))]
@@ -270,6 +264,10 @@ class Rubber_cone:
                 # center_line 리스트를 x 좌표에 따라 정렬
                 sorted_center_line = sorted(center_line, key=lambda point: point[0])
 
+                #distance_to_center_line_based_on_car = sorted_center_line[0][1]
+                #self.pid.compute(distance_to_center_line_based_on_car)
+                #print(distance_to_center_line_based_on_car*180/pi)
+
                 if sorted_center_line:
                     for point in sorted_center_line:
                         pose = PoseStamped()
@@ -295,9 +293,9 @@ class Rubber_cone:
                 if self.is_look_forward_point:
                     steering = atan2(2 * self.vehicle_length * sin(theta), self.lfd)
                     #self.ctrl_cmd_msg.steering = self.pid.update(steering*180/pi)
-                    self.ctrl_cmd_msg.steering=steering
-                    print(self.ctrl_cmd_msg.steering)
-                    #print(self.ctrl_cmd_msg.steering * 180 / pi)  # Conversion to degrees for readability
+                    self.ctrl_cmd_msg.steering=steering# + self.pid.compute(distance_to_center_line_based_on_car)
+                    #print(self.ctrl_cmd_msg.steering)
+                    print(self.ctrl_cmd_msg.steering * 180 / pi)  # Conversion to degrees for readability
                     self.is_look_forward_point = False
                 else:
                     self.ctrl_cmd_msg.steering=0
